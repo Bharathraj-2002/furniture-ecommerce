@@ -1,24 +1,26 @@
 import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
 // ------------------------------------------------------------------
-// EMAIL SETUP
-// ------------------------------------------------------------------
-// By default this uses Ethereal (https://ethereal.email) — a free fake
-// SMTP service made for testing. It does NOT deliver to real inboxes.
-// Every "sent" email gets a preview link instead, so you can see exactly
-// what the customer would have received.
+// EMAIL SETUP — three options, tried in this order:
 //
-// To send REAL emails to real inboxes (e.g. Gmail), set these environment
-// variables before starting the server, and this file will use them
-// automatically instead of Ethereal:
+// 1. RESEND (recommended for hosts like Railway/Render)
+//    Many free hosting platforms BLOCK outbound SMTP connections
+//    (ports 465/587) to stop spam abuse — this makes Gmail/SMTP email
+//    impossible from them, no matter how correct your settings are.
+//    Resend sends over normal HTTPS instead, so it isn't blocked.
+//    Set: RESEND_API_KEY=re_xxxxxxxx  (free at https://resend.com)
+//    Note: without verifying your own domain on Resend, you can only
+//    send TO the email address you signed up to Resend with — that's
+//    a Resend anti-abuse rule, not a bug here.
 //
-//   SMTP_HOST=smtp.gmail.com
-//   SMTP_PORT=465
-//   SMTP_USER=youraddress@gmail.com
-//   SMTP_PASS=your_16_char_gmail_app_password   (not your normal password)
+// 2. SMTP (works when running locally, or on hosts that allow it)
+//    Set: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
+//    For Gmail, SMTP_PASS must be an App Password (Google Account →
+//    Security → 2-Step Verification → App passwords).
 //
-// Gmail requires an "app password" (Google Account → Security → 2-Step
-// Verification → App passwords) — a normal password will be rejected.
+// 3. ETHEREAL (default fallback — fake SMTP for testing)
+//    No real delivery; returns a preview link instead.
 // ------------------------------------------------------------------
 
 let transporterPromise = null;
@@ -87,13 +89,36 @@ function renderOrderEmail(order) {
 }
 
 export async function sendOrderConfirmation(order) {
+  const to = order.customer?.email || "customer@example.com";
+  const subject = `Your Nestly order #${order.id} is confirmed`;
+  const html = renderOrderEmail(order);
+
+  // Option 1: Resend (HTTPS-based — works even when hosts block SMTP)
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const { error } = await resend.emails.send({
+        from: "Nestly <onboarding@resend.dev>",
+        to,
+        subject,
+        html,
+      });
+      if (error) throw new Error(error.message || "Resend error");
+      return { sent: true, previewUrl: null };
+    } catch (err) {
+      console.error("Resend email send failed:", err.message);
+      return { sent: false, previewUrl: null, error: err.message };
+    }
+  }
+
+  // Option 2 / 3: SMTP or Ethereal fallback
   try {
     const transporter = await getTransporter();
     const info = await transporter.sendMail({
       from: '"Nestly" <orders@nestly.example>',
-      to: order.customer?.email || "customer@example.com",
-      subject: `Your Nestly order #${order.id} is confirmed`,
-      html: renderOrderEmail(order),
+      to,
+      subject,
+      html,
     });
 
     const previewUrl = nodemailer.getTestMessageUrl(info) || null;

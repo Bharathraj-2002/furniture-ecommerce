@@ -12,6 +12,7 @@
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "nanoid": "^5.0.7",
-    "nodemailer": "^6.9.14"
+    "nodemailer": "^6.9.14",
+    "resend": "^4.0.1"
   }
 }
