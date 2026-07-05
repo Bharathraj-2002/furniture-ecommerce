@@ -104,7 +104,7 @@ app.delete("/api/cart/:cartId/items/:productId", (req, res) => {
 });
 
 // ---------- Checkout ----------
-app.post("/api/orders", async (req, res) => {
+app.post("/api/orders", (req, res) => {
   const { cartId, customer } = req.body;
   const { items, subtotal } = hydrateCart(cartId);
   if (!items.length) return res.status(400).json({ error: "Cart is empty" });
@@ -119,14 +119,27 @@ app.post("/api/orders", async (req, res) => {
     customer,
     status: "confirmed",
     createdAt: new Date().toISOString(),
+    emailPreviewUrl: null,
+    emailStatus: "sending",
   };
   orders.set(orderId, order);
   carts.set(cartId, []); // clear cart after checkout
 
-  const emailResult = await sendOrderConfirmation(order);
-  order.emailPreviewUrl = emailResult.previewUrl;
-
+  // Respond immediately — don't make the customer wait on a slow/blocked
+  // email server. The email sends in the background; once done, the same
+  // order object (kept in the `orders` map) gets updated in place, so the
+  // admin page and a later GET /api/orders/:id will reflect the result.
   res.status(201).json(order);
+
+  sendOrderConfirmation(order)
+    .then((emailResult) => {
+      order.emailPreviewUrl = emailResult.previewUrl;
+      order.emailStatus = emailResult.sent ? "sent" : "failed";
+    })
+    .catch((err) => {
+      order.emailStatus = "failed";
+      console.error("Background email send failed:", err.message);
+    });
 });
 
 app.get("/api/orders", (req, res) => {

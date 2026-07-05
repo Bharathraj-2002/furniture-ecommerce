@@ -33,6 +33,9 @@ async function getTransporter() {
         port: Number(process.env.SMTP_PORT) || 465,
         secure: true,
         auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 10000,
       })
     );
   } else {
@@ -42,6 +45,9 @@ async function getTransporter() {
         port: 587,
         secure: false,
         auth: { user: testAccount.user, pass: testAccount.pass },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 10000,
       })
     );
   }
